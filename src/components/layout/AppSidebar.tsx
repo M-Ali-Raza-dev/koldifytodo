@@ -4,7 +4,7 @@ import { useAuthStore } from '@/stores/authStore';
 import {
   LayoutDashboard, CheckSquare, Users, Server, Globe,
   Wrench, Megaphone, ShieldCheck, Bot, CalendarClock,
-  BarChart3, Settings, Crown, FolderKanban,
+  BarChart3, Settings, Crown, FolderKanban, Calendar,
 } from 'lucide-react';
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -14,6 +14,7 @@ import {
 const navItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard, roles: ['super_admin', 'ceo', 'employee'] },
   { title: 'Tasks', url: '/tasks', icon: CheckSquare, roles: ['super_admin', 'ceo', 'employee'] },
+  { title: 'Calendar', url: '/calendar', icon: Calendar, roles: ['super_admin', 'ceo', 'employee'] },
   { title: 'Projects', url: '/projects', icon: FolderKanban, roles: ['super_admin', 'ceo', 'employee'] },
   { title: 'Clients', url: '/clients', icon: Users, roles: ['super_admin', 'ceo', 'employee'] },
   { title: 'Tenants & Inboxes', url: '/tenants', icon: Server, roles: ['super_admin', 'ceo', 'employee'] },
