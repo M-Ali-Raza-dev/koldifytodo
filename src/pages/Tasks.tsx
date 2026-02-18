@@ -1,9 +1,17 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { mockTasks, type Task } from '@/stores/mockData';
-import { Plus, GripVertical, Calendar, Filter } from 'lucide-react';
+import { useAuthStore } from '@/stores/authStore';
+import { Plus, GripVertical, Calendar, Filter, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { toast } from 'sonner';
+import { exportToCSV } from '@/lib/csv';
 
 const columns = [
   { id: 'todo' as const, label: 'To Do', color: 'bg-muted-foreground' },
@@ -57,8 +65,42 @@ function TaskCard({ task, index }: { task: Task; index: number }) {
 }
 
 const Tasks = () => {
+  const user = useAuthStore(s => s.user);
   const [view, setView] = useState<View>('kanban');
-  const [tasks] = useState<Task[]>(mockTasks);
+  const [tasks, setTasks] = useState<Task[]>(mockTasks);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newTask, setNewTask] = useState({
+    title: '',
+    description: '',
+    status: 'todo' as Task['status'],
+    priority: 'medium' as Task['priority'],
+    due_date: '2025-02-25',
+    assigned_to: user?.role === 'employee' ? (user?.full_name || 'Jordan Smith') : 'Jordan Smith',
+    related_name: '',
+    tags: '',
+  });
+
+  const handleAddTask = () => {
+    if (!newTask.title.trim()) {
+      toast.error('Please enter a task title');
+      return;
+    }
+    const task: Task = {
+      id: String(tasks.length + 1),
+      title: newTask.title,
+      status: newTask.status,
+      priority: newTask.priority,
+      due_date: newTask.due_date,
+      assigned_to: newTask.assigned_to,
+      created_by: user?.full_name || 'Unknown',
+      related_name: newTask.related_name || undefined,
+      tags: newTask.tags ? newTask.tags.split(',').map(t => t.trim()) : [],
+    };
+    setTasks([task, ...tasks]);
+    setShowAddModal(false);
+    setNewTask({ title: '', description: '', status: 'todo', priority: 'medium', due_date: '2025-02-25', assigned_to: user?.role === 'employee' ? (user?.full_name || 'Jordan Smith') : 'Jordan Smith', related_name: '', tags: '' });
+    toast.success(`Task "${task.title}" created`);
+  };
 
   return (
     <div className="space-y-4">
@@ -82,10 +124,10 @@ const Tasks = () => {
               List
             </button>
           </div>
-          <Button variant="ghost" size="sm" className="text-muted-foreground">
-            <Filter className="h-4 w-4 mr-1" /> Filter
+          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => exportToCSV(tasks as unknown as Record<string, unknown>[], 'tasks')}>
+            Export
           </Button>
-          <Button size="sm">
+          <Button size="sm" onClick={() => setShowAddModal(true)}>
             <Plus className="h-4 w-4 mr-1" /> New Task
           </Button>
         </div>
@@ -121,6 +163,7 @@ const Tasks = () => {
                 <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Priority</th>
                 <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Due</th>
                 <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Assignee</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Created By</th>
               </tr>
             </thead>
             <tbody>
@@ -141,12 +184,79 @@ const Tasks = () => {
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{task.due_date}</td>
                   <td className="px-4 py-3 text-muted-foreground">{task.assigned_to}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{task.created_by || '—'}</td>
                 </motion.tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      {/* Add Task Modal */}
+      <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
+        <DialogContent className="bg-card border-border max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Create New Task</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs text-muted-foreground">Title</Label>
+              <Input className="mt-1" value={newTask.title} onChange={e => setNewTask(p => ({ ...p, title: e.target.value }))} placeholder="Task title..." />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs text-muted-foreground">Priority</Label>
+                <Select value={newTask.priority} onValueChange={(v: Task['priority']) => setNewTask(p => ({ ...p, priority: v }))}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Status</Label>
+                <Select value={newTask.status} onValueChange={(v: Task['status']) => setNewTask(p => ({ ...p, status: v }))}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todo">To Do</SelectItem>
+                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="blocked">Blocked</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Due Date</Label>
+              <Input type="date" className="mt-1" value={newTask.due_date} onChange={e => setNewTask(p => ({ ...p, due_date: e.target.value }))} />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Assign To</Label>
+              <Select value={newTask.assigned_to} onValueChange={v => setNewTask(p => ({ ...p, assigned_to: v }))}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Jordan Smith">Jordan Smith</SelectItem>
+                  <SelectItem value="Alex Koldify">Alex Koldify</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Related To (optional)</Label>
+              <Input className="mt-1" value={newTask.related_name} onChange={e => setNewTask(p => ({ ...p, related_name: e.target.value }))} placeholder="Client or project name..." />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Tags (comma separated)</Label>
+              <Input className="mt-1" value={newTask.tags} onChange={e => setNewTask(p => ({ ...p, tags: e.target.value }))} placeholder="infra, campaign..." />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddModal(false)}>Cancel</Button>
+            <Button onClick={handleAddTask}>Create Task</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
