@@ -1,5 +1,10 @@
 import { motion } from 'framer-motion';
 import { mockClients } from '@/stores/mockData';
+import { api, authTokenStorage } from '@/lib/api';
+import { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { X } from 'lucide-react';
 
 const statusConfig: Record<string, { color: string; ringColor: string }> = {
   safe: { color: 'text-success', ringColor: 'stroke-success' },
@@ -41,13 +46,82 @@ function ProgressRing({ progress, status, size = 80 }: { progress: number; statu
 }
 
 const Guarantees = () => {
-  const clientsWithGuarantees = mockClients.filter((c) => c.status !== 'canceled');
+  const token = authTokenStorage.get();
+  const [guarantees, setGuarantees] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formData, setFormData] = useState({
+    client_id: '',
+    guarantee_leads: 0,
+    guarantee_target: 50,
+    guarantee_status: 'safe',
+    guarantee_days: 90,
+  });
+
+  // Fetch guarantees from MongoDB
+  useEffect(() => {
+    const loadGuarantees = async () => {
+      if (!token) return;
+      try {
+        const response = await api.getGuarantees(token);
+        setGuarantees(response.guarantees);
+      } catch (error) {
+        console.error('Failed to load guarantees:', error);
+        // Fallback: use clients data for guarantee progress display
+        try {
+          const clientsResponse = await api.getClients(token);
+          setGuarantees(clientsResponse.clients.filter((c: any) => c.status !== 'canceled'));
+        } catch {
+          setGuarantees(mockClients.filter((c) => c.status !== 'canceled'));
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadGuarantees();
+  }, [token]);
+
+  const clientsWithGuarantees = guarantees;
+
+  const handleAddGuarantee = async () => {
+    if (!formData.client_id || !token) return;
+    setSaving(true);
+    try {
+      await api.createGuarantee(token, {
+        client_id: formData.client_id,
+        guarantee_leads: parseInt(String(formData.guarantee_leads)),
+        guarantee_target: parseInt(String(formData.guarantee_target)),
+        guarantee_status: formData.guarantee_status,
+        guarantee_days: parseInt(String(formData.guarantee_days)),
+      });
+      setShowAddModal(false);
+      setFormData({
+        client_id: '',
+        guarantee_leads: 0,
+        guarantee_target: 50,
+        guarantee_status: 'safe',
+        guarantee_days: 90,
+      });
+      // Refresh guarantees
+      const response = await api.getGuarantees(token);
+      setGuarantees(response.guarantees);
+    } catch (error) {
+      console.error('Failed to add guarantee:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Guarantees / SLA</h1>
-        <p className="text-sm text-muted-foreground mt-1">50 interested leads in 90 days per client</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Guarantees / SLA</h1>
+          <p className="text-sm text-muted-foreground mt-1">50 interested leads in 90 days per client</p>
+        </div>
+        <Button onClick={() => setShowAddModal(true)}>Add Guarantee</Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -96,6 +170,89 @@ const Guarantees = () => {
           );
         })}
       </div>
+
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card border border-border rounded-lg shadow-lg max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold">Add Guarantee</h2>
+              <button onClick={() => setShowAddModal(false)} className="text-muted-foreground hover:text-foreground">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Client ID</label>
+                <Input
+                  type="text"
+                  placeholder="Client ID"
+                  value={formData.client_id}
+                  onChange={(e) => setFormData({ ...formData, client_id: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Current Leads</label>
+                <Input
+                  type="number"
+                  placeholder="0"
+                  value={formData.guarantee_leads}
+                  onChange={(e) => setFormData({ ...formData, guarantee_leads: parseInt(e.target.value) || 0 })}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Target Leads</label>
+                <Input
+                  type="number"
+                  placeholder="50"
+                  value={formData.guarantee_target}
+                  onChange={(e) => setFormData({ ...formData, guarantee_target: parseInt(e.target.value) || 50 })}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Status</label>
+                <select
+                  value={formData.guarantee_status}
+                  onChange={(e) => setFormData({ ...formData, guarantee_status: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 border border-border rounded-md bg-background text-foreground"
+                >
+                  <option value="safe">Safe</option>
+                  <option value="at_risk">At Risk</option>
+                  <option value="critical">Critical</option>
+                  <option value="met">Met</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Days</label>
+                <Input
+                  type="number"
+                  placeholder="90"
+                  value={formData.guarantee_days}
+                  onChange={(e) => setFormData({ ...formData, guarantee_days: parseInt(e.target.value) || 90 })}
+                  className="mt-1"
+                />
+              </div>
+              <div className="flex gap-2 justify-end mt-6">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowAddModal(false)}
+                  disabled={saving}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleAddGuarantee}
+                  disabled={saving || !formData.client_id}
+                >
+                  {saving ? 'Adding...' : 'Add Guarantee'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

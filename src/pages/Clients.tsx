@@ -1,9 +1,11 @@
 import { motion } from 'framer-motion';
 import { mockClients } from '@/stores/mockData';
-import { Plus, Search, ChevronRight } from 'lucide-react';
+import { useAuthStore } from '@/stores/authStore';
+import { api, authTokenStorage } from '@/lib/api';
+import { Plus, Search, ChevronRight, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const statusColors: Record<string, string> = {
   active: 'bg-success/10 text-success',
@@ -20,10 +22,63 @@ const guaranteeColors: Record<string, string> = {
 };
 
 const Clients = () => {
+  const user = useAuthStore((s) => s.user);
+  const token = authTokenStorage.get();
+  const isEmployee = user?.role === 'employee';
+  const [clients, setClients] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const filtered = mockClients.filter((c) =>
-    c.company_name.toLowerCase().includes(search.toLowerCase()) ||
-    c.industry.toLowerCase().includes(search.toLowerCase())
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [formData, setFormData] = useState({ company_name: '', website: '', industry: '', monthly_fee: 0, main_contact_name: '', status: 'active' });
+  const [saving, setSaving] = useState(false);
+
+  // Fetch clients from MongoDB
+  useEffect(() => {
+    const loadClients = async () => {
+      if (!token) return;
+      try {
+        const response = await api.getClients(token);
+        setClients(response.clients);
+      } catch (error) {
+        console.error('Failed to load clients:', error);
+        // Fallback to mock data
+        setClients(mockClients);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadClients();
+  }, [token]);
+
+  const handleAddClient = async () => {
+    if (!formData.company_name || !formData.website) {
+      alert('Please fill in required fields');
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.createClient(token, {
+        ...formData,
+        monthly_fee: parseFloat(formData.monthly_fee.toString()),
+        guarantee_leads: 0,
+        guarantee_target: 50,
+        guarantee_status: 'safe',
+        guarantee_days_remaining: 90,
+      });
+      const response = await api.getClients(token);
+      setClients(response.clients);
+      setShowAddModal(false);
+      setFormData({ company_name: '', website: '', industry: '', monthly_fee: 0, main_contact_name: '', status: 'active' });
+    } catch (error) {
+      console.error('Failed to add client:', error);
+      alert('Failed to add client');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const filtered = clients.filter((c) =>
+    c.company_name.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -31,10 +86,56 @@ const Clients = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Clients</h1>
-          <p className="text-sm text-muted-foreground mt-1">{mockClients.length} clients</p>
+          <p className="text-sm text-muted-foreground mt-1">{clients.length} clients</p>
         </div>
-        <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Add Client</Button>
+        <Button size="sm" onClick={() => setShowAddModal(true)}><Plus className="h-4 w-4 mr-1" /> Add Client</Button>
       </div>
+
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card rounded-lg border border-border p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Add New Client</h2>
+              <button onClick={() => setShowAddModal(false)}><X className="h-4 w-4" /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm font-medium text-foreground">Company Name *</label>
+                <Input placeholder="Acme Corp" value={formData.company_name} onChange={(e) => setFormData({...formData, company_name: e.target.value})} />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground">Website *</label>
+                <Input placeholder="example.com" value={formData.website} onChange={(e) => setFormData({...formData, website: e.target.value})} />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground">Industry</label>
+                <Input placeholder="Tech, Finance, etc." value={formData.industry} onChange={(e) => setFormData({...formData, industry: e.target.value})} />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground">Monthly Fee</label>
+                <Input type="number" placeholder="5000" value={formData.monthly_fee} onChange={(e) => setFormData({...formData, monthly_fee: parseFloat(e.target.value) || 0})} />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground">Main Contact</label>
+                <Input placeholder="John Doe" value={formData.main_contact_name} onChange={(e) => setFormData({...formData, main_contact_name: e.target.value})} />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground">Status</label>
+                <select value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})} className="w-full px-3 py-2 rounded-md border border-border bg-background text-foreground text-sm">
+                  <option value="active">Active</option>
+                  <option value="onboarding">Onboarding</option>
+                  <option value="paused">Paused</option>
+                  <option value="canceled">Canceled</option>
+                </select>
+              </div>
+              <div className="flex gap-2 pt-4">
+                <Button variant="outline" size="sm" onClick={() => setShowAddModal(false)} className="flex-1">Cancel</Button>
+                <Button size="sm" onClick={handleAddClient} disabled={saving} className="flex-1">{saving ? 'Adding...' : 'Add Client'}</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <div className="relative flex-1 max-w-sm">
@@ -82,7 +183,7 @@ const Clients = () => {
                     {client.status}
                   </span>
                 </td>
-                <td className="px-4 py-3 font-mono text-foreground">${client.monthly_fee.toLocaleString()}</td>
+                <td className="px-4 py-3 font-mono text-foreground">{isEmployee ? 'Restricted' : `$${client.monthly_fee.toLocaleString()}`}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <div className="h-1.5 w-16 rounded-full bg-secondary overflow-hidden">

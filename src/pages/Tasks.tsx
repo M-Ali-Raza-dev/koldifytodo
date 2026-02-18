@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { mockTasks, type Task } from '@/stores/mockData';
+import { type Task } from '@/stores/mockData';
 import { useAuthStore } from '@/stores/authStore';
 import { Plus, GripVertical, Calendar, Filter, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { exportToCSV } from '@/lib/csv';
+import { api, authTokenStorage } from '@/lib/api';
 
 const columns = [
   { id: 'todo' as const, label: 'To Do', color: 'bg-muted-foreground' },
@@ -66,40 +67,83 @@ function TaskCard({ task, index }: { task: Task; index: number }) {
 
 const Tasks = () => {
   const user = useAuthStore(s => s.user);
+  const isEmployee = user?.role === 'employee';
   const [view, setView] = useState<View>('kanban');
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newTask, setNewTask] = useState({
     title: '',
     description: '',
     status: 'todo' as Task['status'],
     priority: 'medium' as Task['priority'],
-    due_date: '2025-02-25',
-    assigned_to: user?.role === 'employee' ? (user?.full_name || 'Jordan Smith') : 'Jordan Smith',
+    due_date: new Date().toISOString().slice(0, 10),
+    assigned_to: user?.full_name || '',
     related_name: '',
     tags: '',
   });
 
-  const handleAddTask = () => {
+  useEffect(() => {
+    const loadTasks = async () => {
+      const token = authTokenStorage.get();
+      if (!token) {
+        setIsLoadingTasks(false);
+        return;
+      }
+
+      try {
+        const { tasks: dbTasks } = await api.getTasks(token);
+        setTasks(dbTasks);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to fetch tasks');
+      } finally {
+        setIsLoadingTasks(false);
+      }
+    };
+
+    void loadTasks();
+  }, []);
+
+  const handleAddTask = async () => {
     if (!newTask.title.trim()) {
       toast.error('Please enter a task title');
       return;
     }
-    const task: Task = {
-      id: String(tasks.length + 1),
-      title: newTask.title,
-      status: newTask.status,
-      priority: newTask.priority,
-      due_date: newTask.due_date,
-      assigned_to: newTask.assigned_to,
-      created_by: user?.full_name || 'Unknown',
-      related_name: newTask.related_name || undefined,
-      tags: newTask.tags ? newTask.tags.split(',').map(t => t.trim()) : [],
-    };
-    setTasks([task, ...tasks]);
-    setShowAddModal(false);
-    setNewTask({ title: '', description: '', status: 'todo', priority: 'medium', due_date: '2025-02-25', assigned_to: user?.role === 'employee' ? (user?.full_name || 'Jordan Smith') : 'Jordan Smith', related_name: '', tags: '' });
-    toast.success(`Task "${task.title}" created`);
+
+    const token = authTokenStorage.get();
+    if (!token) {
+      toast.error('Please login again');
+      return;
+    }
+
+    try {
+      const { task } = await api.createTask(token, {
+        title: newTask.title,
+        description: newTask.description,
+        status: newTask.status,
+        priority: newTask.priority,
+        due_date: newTask.due_date,
+        assigned_to: isEmployee ? (user?.full_name || newTask.assigned_to) : newTask.assigned_to,
+        related_name: newTask.related_name || undefined,
+        tags: newTask.tags ? newTask.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+      });
+
+      setTasks([task, ...tasks]);
+      setShowAddModal(false);
+      setNewTask({
+        title: '',
+        description: '',
+        status: 'todo',
+        priority: 'medium',
+        due_date: new Date().toISOString().slice(0, 10),
+        assigned_to: user?.full_name || '',
+        related_name: '',
+        tags: '',
+      });
+      toast.success(`Task "${task.title}" created`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to create task');
+    }
   };
 
   return (
@@ -107,7 +151,9 @@ const Tasks = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Tasks</h1>
-          <p className="text-sm text-muted-foreground mt-1">{tasks.length} tasks across all projects</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {isLoadingTasks ? 'Loading tasks...' : `${tasks.length} tasks across all projects`}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-md border border-border overflow-hidden">
@@ -234,13 +280,13 @@ const Tasks = () => {
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Assign To</Label>
-              <Select value={newTask.assigned_to} onValueChange={v => setNewTask(p => ({ ...p, assigned_to: v }))}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Jordan Smith">Jordan Smith</SelectItem>
-                  <SelectItem value="Alex Koldify">Alex Koldify</SelectItem>
-                </SelectContent>
-              </Select>
+              <Input
+                className="mt-1"
+                value={newTask.assigned_to}
+                onChange={e => setNewTask(p => ({ ...p, assigned_to: e.target.value }))}
+                placeholder="Assignee name"
+                disabled={isEmployee}
+              />
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Related To (optional)</Label>

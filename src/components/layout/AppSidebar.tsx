@@ -17,13 +17,14 @@ const navItems = [
   { title: 'Calendar', url: '/calendar', icon: Calendar, roles: ['super_admin', 'ceo', 'employee'] },
   { title: 'Projects', url: '/projects', icon: FolderKanban, roles: ['super_admin', 'ceo', 'employee'] },
   { title: 'Clients', url: '/clients', icon: Users, roles: ['super_admin', 'ceo', 'employee'] },
+  { title: 'Employees', url: '/employees', icon: Users, roles: ['super_admin', 'ceo'] },
   { title: 'Tenants & Inboxes', url: '/tenants', icon: Server, roles: ['super_admin', 'ceo', 'employee'] },
   { title: 'Domains & DNS', url: '/domains', icon: Globe, roles: ['super_admin', 'ceo', 'employee'] },
   { title: 'Tools & Billing', url: '/tools', icon: Wrench, roles: ['super_admin', 'ceo', 'employee'] },
   { title: 'Campaigns', url: '/campaigns', icon: Megaphone, roles: ['super_admin', 'ceo', 'employee'] },
   { title: 'Guarantees / SLA', url: '/guarantees', icon: ShieldCheck, roles: ['super_admin', 'ceo', 'employee'] },
   { title: 'Automation & Logs', url: '/automation', icon: Bot, roles: ['super_admin', 'ceo', 'employee'] },
-  { title: 'Renewals Calendar', url: '/renewals', icon: CalendarClock, roles: ['super_admin', 'ceo', 'employee'] },
+  { title: 'Renewals Calendar', url: '/renewals', icon: CalendarClock, roles: ['super_admin', 'ceo'] },
   { title: 'Reports', url: '/reports', icon: BarChart3, roles: ['super_admin', 'ceo'] },
   { title: 'Super Admin', url: '/admin', icon: Crown, roles: ['super_admin'] },
   { title: 'Settings', url: '/settings', icon: Settings, roles: ['super_admin', 'ceo', 'employee'] },
@@ -38,9 +39,11 @@ export function AppSidebar() {
 
   return (
     <Sidebar className="border-r border-border bg-sidebar">
-      <div className="flex h-14 items-center gap-2 border-b border-border px-4">
-        <span className="text-xl font-bold tracking-tight text-gradient">Koldify</span>
-        <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Control</span>
+      <div className="flex h-14 items-center border-b border-border px-4">
+        <div>
+          <span className="text-base font-bold tracking-tight text-gradient">Koldify</span>
+          <span className="block text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Control</span>
+        </div>
       </div>
       <SidebarContent>
         <SidebarGroup>

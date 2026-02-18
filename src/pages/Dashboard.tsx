@@ -79,6 +79,7 @@ const statusColors: Record<string, string> = {
 const Dashboard = () => {
   const user = useAuthStore((s) => s.user);
   const isCEO = user?.role === 'ceo' || user?.role === 'super_admin';
+  const isEmployee = user?.role === 'employee';
   const kpis = dashboardKPIs;
 
   const mrr = useCounter(kpis.totalMRR, 1400);
@@ -90,7 +91,10 @@ const Dashboard = () => {
   const deliverability = useCounter(kpis.avgDeliverability, 1100, 1);
   const utilization = useCounter(kpis.tenantUtilization, 1000);
 
-  const overdueTasks = mockTasks.filter((t) => t.status !== 'done' && new Date(t.due_date) < new Date());
+  const visibleTasks = isEmployee
+    ? mockTasks.filter((t) => t.assigned_to === user?.full_name || t.created_by === user?.full_name)
+    : mockTasks;
+  const overdueTasks = visibleTasks.filter((t) => t.status !== 'done' && new Date(t.due_date) < new Date());
   const atRiskClients = mockClients.filter((c) => c.guarantee_status === 'at_risk' || c.guarantee_status === 'critical');
 
   return (
@@ -119,9 +123,9 @@ const Dashboard = () => {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <KPICard title="Tasks Due Today" value={`${mockTasks.filter(t => t.due_date === '2025-02-18' && t.status !== 'done').length}`} icon={Target} delay={0} />
-          <KPICard title="In Progress" value={`${mockTasks.filter(t => t.status === 'in_progress').length}`} icon={Activity} delay={1} />
-          <KPICard title="Completed" value={`${mockTasks.filter(t => t.status === 'done').length}`} icon={CalendarCheck} delay={2} />
+          <KPICard title="Tasks Due Today" value={`${visibleTasks.filter(t => t.status !== 'done' && new Date(t.due_date).toDateString() === new Date().toDateString()).length}`} icon={Target} delay={0} />
+          <KPICard title="In Progress" value={`${visibleTasks.filter(t => t.status === 'in_progress').length}`} icon={Activity} delay={1} />
+          <KPICard title="Completed" value={`${visibleTasks.filter(t => t.status === 'done').length}`} icon={CalendarCheck} delay={2} />
           <KPICard title="Overdue" value={`${overdueTasks.length}`} icon={AlertTriangle} delay={3} />
         </div>
       )}
@@ -214,7 +218,7 @@ const Dashboard = () => {
       >
         <h3 className="text-sm font-semibold mb-3">{isCEO ? 'Team Tasks' : 'My Tasks'}</h3>
         <div className="space-y-1">
-          {mockTasks.slice(0, 5).map((task, i) => {
+          {visibleTasks.slice(0, 5).map((task, i) => {
             const priorityColors: Record<string, string> = {
               urgent: 'bg-destructive/10 text-destructive',
               high: 'bg-warning/10 text-warning',

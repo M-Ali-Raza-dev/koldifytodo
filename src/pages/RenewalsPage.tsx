@@ -1,6 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { mockTools, mockTenants, mockDomains } from '@/stores/mockData';
+import { useAuthStore } from '@/stores/authStore';
+import { useNavigate } from 'react-router-dom';
+import { api, authTokenStorage } from '@/lib/api';
 import { CalendarClock, CreditCard, Server, Globe, Wrench, AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,24 +31,56 @@ const categoryIcons: Record<string, React.ElementType> = { tool: Wrench, tenant:
 const categoryColors: Record<string, string> = { tool: 'text-primary', tenant: 'text-info', domain: 'text-success' };
 
 const RenewalsPage = () => {
-  const today = new Date();
+  const user = useAuthStore((s) => s.user);
+  const token = authTokenStorage.get();
+  const navigate = useNavigate();
+  const isEmployee = user?.role === 'employee';
+  const [renewals, setRenewals] = useState<RenewalItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const renewals: RenewalItem[] = useMemo(() => {
-    const items: RenewalItem[] = [];
-    mockTools.forEach(t => {
-      const days = Math.ceil((new Date(t.renewal_date).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-      items.push({ id: `tool-${t.id}`, name: t.tool_name, category: 'tool', cost: t.cost, renewal_date: t.renewal_date, autopay: t.autopay, days_until: days });
-    });
-    mockTenants.forEach(t => {
-      const days = Math.ceil((new Date(t.renewal_date).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-      items.push({ id: `tenant-${t.id}`, name: t.tenant_name, category: 'tenant', cost: t.monthly_cost, renewal_date: t.renewal_date, days_until: days });
-    });
-    mockDomains.forEach(d => {
-      const days = Math.ceil((new Date(d.renewal_date).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-      items.push({ id: `domain-${d.id}`, name: d.domain_name, category: 'domain', cost: 12, renewal_date: d.renewal_date, days_until: days });
-    });
-    return items.sort((a, b) => a.days_until - b.days_until);
-  }, []);
+  // Fetch renewals from MongoDB
+  useEffect(() => {
+    if (!token) return;
+    const loadRenewals = async () => {
+      try {
+        const response = await api.getRenewals(token);
+        const items: RenewalItem[] = response.renewals.map((r: any) => ({
+          id: r.id,
+          name: r.item_name,
+          category: r.item_type,
+          cost: r.cost,
+          renewal_date: r.renewal_date,
+          autopay: r.autopay,
+          days_until: Math.ceil((new Date(r.renewal_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)),
+        }));
+        setRenewals(items.sort((a, b) => a.days_until - b.days_until));
+      } catch (error) {
+        console.error('Failed to load renewals:', error);
+        setRenewals([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadRenewals();
+  }, [token]);
+
+  // Restrict access to CEO and Super Admin only
+  useEffect(() => {
+    if (user?.role === 'employee') {
+      navigate('/');
+    }
+  }, [user, navigate]);
+
+  if (isEmployee) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center space-y-4">
+          <h1 className="text-2xl font-bold">Access Denied</h1>
+          <p className="text-muted-foreground">Renewals are only available for management roles.</p>
+        </div>
+      </div>
+    );
+  }
 
   const totalMonthly = renewals.filter(r => r.category === 'tool' || r.category === 'tenant').reduce((s, r) => s + r.cost, 0);
   const urgentCount = renewals.filter(r => r.days_until <= 14).length;
@@ -67,7 +102,7 @@ const RenewalsPage = () => {
             <CreditCard className="h-4 w-4 text-primary" />
             <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Total Monthly</span>
           </div>
-          <p className="text-2xl font-bold text-foreground">${totalMonthly.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-foreground">{isEmployee ? 'Restricted' : `$${totalMonthly.toLocaleString()}`}</p>
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="rounded-lg border border-border bg-card p-4">
           <div className="flex items-center gap-2 mb-2">
@@ -117,7 +152,7 @@ const RenewalsPage = () => {
                     </div>
                   </td>
                   <td className="px-4 py-3"><Badge variant="outline" className="text-[10px] capitalize">{item.category}</Badge></td>
-                  <td className="px-4 py-3 text-foreground font-medium">${item.cost}</td>
+                  <td className="px-4 py-3 text-foreground font-medium">{isEmployee ? '—' : `$${item.cost}`}</td>
                   <td className="px-4 py-3 text-muted-foreground">{item.renewal_date}</td>
                   <td className="px-4 py-3"><Badge variant="outline" className={`text-[10px] ${urgency.color}`}>{urgency.label}</Badge></td>
                   <td className="px-4 py-3 text-muted-foreground">{item.autopay !== undefined ? (item.autopay ? '✓' : '✗') : '—'}</td>

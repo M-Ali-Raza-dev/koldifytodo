@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { api, authTokenStorage } from '@/lib/api';
 
 export type Role = 'super_admin' | 'ceo' | 'employee';
 
@@ -18,61 +19,54 @@ export interface User {
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => boolean;
+  isLoadingAuth: boolean;
+  initialize: () => Promise<void>;
+  login: (email: string, password: string) => Promise<{ ok: boolean; message?: string }>;
+  signup: (full_name: string, email: string, password: string) => Promise<{ ok: boolean; message?: string }>;
   logout: () => void;
-  switchRole: (role: Role) => void;
 }
-
-const mockUsers: Record<string, User> = {
-  'admin@koldify.io': {
-    id: '1',
-    full_name: 'System Admin',
-    email: 'admin@koldify.io',
-    timezone: 'America/New_York',
-    status: 'online',
-    role: 'super_admin',
-    is_active: true,
-    created_at: '2024-01-01',
-    last_login: new Date().toISOString(),
-  },
-  'ceo@koldify.io': {
-    id: '2',
-    full_name: 'Alex Koldify',
-    email: 'ceo@koldify.io',
-    timezone: 'America/New_York',
-    status: 'online',
-    role: 'ceo',
-    is_active: true,
-    created_at: '2024-01-01',
-    last_login: new Date().toISOString(),
-  },
-  'employee@koldify.io': {
-    id: '3',
-    full_name: 'Jordan Smith',
-    email: 'employee@koldify.io',
-    timezone: 'America/Chicago',
-    status: 'online',
-    role: 'employee',
-    is_active: true,
-    created_at: '2024-03-15',
-    last_login: new Date().toISOString(),
-  },
-};
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
-  login: (email: string, _password: string) => {
-    const user = mockUsers[email];
-    if (user) {
-      set({ user, isAuthenticated: true });
-      return true;
+  isLoadingAuth: true,
+  initialize: async () => {
+    const token = authTokenStorage.get();
+    if (!token) {
+      set({ user: null, isAuthenticated: false, isLoadingAuth: false });
+      return;
     }
-    return false;
+
+    try {
+      const { user } = await api.me(token);
+      set({ user, isAuthenticated: true, isLoadingAuth: false });
+    } catch {
+      authTokenStorage.clear();
+      set({ user: null, isAuthenticated: false, isLoadingAuth: false });
+    }
   },
-  logout: () => set({ user: null, isAuthenticated: false }),
-  switchRole: (role: Role) =>
-    set((state) => ({
-      user: state.user ? { ...state.user, role } : null,
-    })),
+  login: async (email: string, password: string) => {
+    try {
+      const { token, user } = await api.login({ email, password });
+      authTokenStorage.set(token);
+      set({ user, isAuthenticated: true, isLoadingAuth: false });
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : 'Login failed' };
+    }
+  },
+  signup: async (full_name: string, email: string, password: string) => {
+    try {
+      const { token, user } = await api.signup({ full_name, email, password });
+      authTokenStorage.set(token);
+      set({ user, isAuthenticated: true, isLoadingAuth: false });
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : 'Signup failed' };
+    }
+  },
+  logout: () => {
+    authTokenStorage.clear();
+    set({ user: null, isAuthenticated: false });
+  },
 }));

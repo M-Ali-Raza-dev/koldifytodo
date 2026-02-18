@@ -3,12 +3,35 @@ import { mockClients, mockTools, mockTenants, leadsMetricsData, mrrTrendData, ex
 import { BarChart3, DollarSign, TrendingUp, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { exportToCSV } from '@/lib/csv';
+import { useAuthStore } from '@/stores/authStore';
+import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, AreaChart, Area,
 } from 'recharts';
 
 const ReportsPage = () => {
+  const user = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
+
+  // Restrict access to CEO and Super Admin only
+  useEffect(() => {
+    if (user?.role === 'employee') {
+      navigate('/');
+    }
+  }, [user, navigate]);
+
+  if (user?.role === 'employee') {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center space-y-4">
+          <h1 className="text-2xl font-bold">Access Denied</h1>
+          <p className="text-muted-foreground">Reports are only available for management roles.</p>
+        </div>
+      </div>
+    );
+  }
   const totalMRR = mockClients.filter(c => c.status === 'active').reduce((s, c) => s + c.monthly_fee, 0);
   const totalToolCost = mockTools.reduce((s, t) => s + (t.billing_cycle === 'annual' ? t.cost / 12 : t.cost), 0);
   const totalTenantCost = mockTenants.reduce((s, t) => s + t.monthly_cost, 0);

@@ -5,11 +5,11 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
 export function TopBar() {
-  const { user, logout, switchRole } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const [isDark, setIsDark] = useState(true);
 
   const toggleTheme = () => {
@@ -62,11 +62,6 @@ export function TopBar() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
-            <div className="px-2 py-1.5 text-xs text-muted-foreground">Switch Role (Demo)</div>
-            <DropdownMenuItem onClick={() => switchRole('super_admin')}>Super Admin</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => switchRole('ceo')}>CEO</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => switchRole('employee')}>Employee</DropdownMenuItem>
-            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={logout} className="text-destructive">
               <LogOut className="mr-2 h-4 w-4" /> Sign Out
             </DropdownMenuItem>

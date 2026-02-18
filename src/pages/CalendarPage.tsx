@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { mockCalendarEvents, type CalendarEvent } from '@/stores/mockData';
 import { useAuthStore } from '@/stores/authStore';
+import { api, authTokenStorage } from '@/lib/api';
 import { Calendar, Clock, Video, Plus, ChevronLeft, ChevronRight, ExternalLink, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -39,13 +40,45 @@ function getFirstDayOfMonth(year: number, month: number) {
 
 const CalendarPage = () => {
   const user = useAuthStore(s => s.user);
+  const token = authTokenStorage.get();
   const isCEO = user?.role === 'ceo' || user?.role === 'super_admin';
 
-  const [events, setEvents] = useState<CalendarEvent[]>(mockCalendarEvents);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState(new Date(2025, 1, 18)); // Feb 2025
   const [selectedDate, setSelectedDate] = useState<string | null>('2025-02-18');
   const [showAddModal, setShowAddModal] = useState(false);
   const [view, setView] = useState<'month' | 'week'>('month');
+
+  // Fetch calendar events from MongoDB
+  useEffect(() => {
+    const loadEvents = async () => {
+      if (!token) return;
+      try {
+        const response = await api.getCalendarEvents(token);
+        const dbEvents = response.events.map((e: any) => ({
+          id: e.id,
+          title: e.title,
+          description: e.description,
+          date: e.start_date.split('T')[0],
+          time: new Date(e.start_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+          duration_minutes: Math.round((new Date(e.end_date).getTime() - new Date(e.start_date).getTime()) / (1000 * 60)),
+          type: e.event_type as CalendarEvent['type'],
+          meeting_link: '',
+          assigned_to: e.attendees[0] || user?.full_name || 'Unknown',
+          created_by: e.created_by,
+        }));
+        setEvents(dbEvents);
+      } catch (error) {
+        console.error('Failed to load calendar events:', error);
+        // Fallback to mock data
+        setEvents(mockCalendarEvents);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadEvents();
+  }, [token]);
 
   // New event form state
   const [newEvent, setNewEvent] = useState({
@@ -71,20 +104,48 @@ const CalendarPage = () => {
 
   const selectedDateEvents = selectedDate ? getEventsForDate(selectedDate) : [];
 
-  const handleAddEvent = () => {
+  const handleAddEvent = async () => {
     if (!newEvent.title.trim()) {
       toast.error('Please enter an event title');
       return;
     }
-    const event: CalendarEvent = {
-      id: String(events.length + 1),
-      ...newEvent,
-      created_by: user?.full_name || 'Unknown',
-    };
-    setEvents([...events, event]);
-    setShowAddModal(false);
-    setNewEvent({ title: '', description: '', date: '2025-02-20', time: '10:00', duration_minutes: 30, type: 'meeting', meeting_link: '', assigned_to: 'Jordan Smith' });
-    toast.success(`Event "${event.title}" added to ${event.assigned_to}'s calendar`);
+    if (!token) {
+      toast.error('Not authenticated');
+      return;
+    }
+    try {
+      const startDate = new Date(`${newEvent.date}T${newEvent.time}`);
+      const endDate = new Date(startDate.getTime() + newEvent.duration_minutes * 60000);
+      
+      const response = await api.createCalendarEvent(token, {
+        title: newEvent.title,
+        description: newEvent.description,
+        start_date: startDate.toISOString(),
+        end_date: endDate.toISOString(),
+        event_type: newEvent.type,
+        attendees: [newEvent.assigned_to],
+      });
+
+      const dbEvent = {
+        id: response.event.id,
+        title: response.event.title,
+        description: response.event.description,
+        date: newEvent.date,
+        time: newEvent.time,
+        duration_minutes: newEvent.duration_minutes,
+        type: newEvent.type,
+        meeting_link: newEvent.meeting_link,
+        assigned_to: newEvent.assigned_to,
+        created_by: user?.full_name || 'Unknown',
+      };
+      setEvents([...events, dbEvent]);
+      setShowAddModal(false);
+      setNewEvent({ title: '', description: '', date: '2025-02-20', time: '10:00', duration_minutes: 30, type: 'meeting', meeting_link: '', assigned_to: 'Jordan Smith' });
+      toast.success(`Event "${response.event.title}" saved to calendar`);
+    } catch (error) {
+      toast.error('Failed to save event');
+      console.error(error);
+    }
   };
 
   // Build calendar grid
