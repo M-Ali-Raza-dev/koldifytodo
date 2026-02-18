@@ -4,8 +4,14 @@ import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const clientDistPath = path.join(__dirname, '..', 'dist');
 
 const app = express();
 const port = Number(process.env.PORT || 5000);
@@ -1369,6 +1375,16 @@ app.delete('/api/tasks/:id', authMiddleware, async (req, res) => {
     return res.status(500).json({ message: 'Failed to delete task', error: String(error) });
   }
 });
+
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(clientDistPath));
+  app.get('*', (req, res) => {
+    if (req.path.startsWith('/api')) {
+      return res.status(404).json({ message: 'Not found' });
+    }
+    return res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+}
 
 const start = async () => {
   await mongoose.connect(mongoUri, { dbName });
